@@ -19,10 +19,10 @@ DEFAULT_GAMES = 10_000
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="小团快跑 — 赛博团子竞速模拟器",
+        description="小团快跑模拟器",
     )
     parser.add_argument(
-        "-n", "--num-games",
+        "-n",
         type=int,
         default=DEFAULT_GAMES,
         help=f"模拟局数（默认 {DEFAULT_GAMES:,}）",
