@@ -179,8 +179,6 @@ class Game:
         while self.winner is None:
             self._play_round()
         self._log(f">>> 胜者: {self.winner.name}")
-        if save_state:
-            self._save_last_game()
         return self.winner.name
 
     def reset(self) -> None:
@@ -317,39 +315,6 @@ class Game:
     # ------------------------------------------------------------------
     #  写回 config.json
     # ------------------------------------------------------------------
-
-    def _save_last_game(self) -> None:
-        """将本局最终状态写入 config.json 对应分组的上一轮位置信息中。"""
-        # 收集所有实体（玩家 + 布大王）
-        entities = [p.name for p in self.players] + ["布大王"]
-
-        above: dict[str, str] = {e: "" for e in entities}
-        below: dict[str, str] = {e: "" for e in entities}
-
-        for pos, stack in self.stacks.items():
-            for i, name in enumerate(stack):
-                if i > 0:
-                    below[name] = stack[i - 1]
-                if i < len(stack) - 1:
-                    above[name] = stack[i + 1]
-
-        data = {}
-        for p in self.players:
-            stored_pos = 0 if p.position >= TOTAL_STEPS else p.position - TOTAL_STEPS
-            data[p.name] = {
-                "位置": stored_pos,
-                "上方团子": above[p.name],
-                "下方团子": below[p.name],
-            }
-
-        # 更新 config.json 中对应分组的上一轮位置信息
-        config_path = _PROJECT_ROOT / "config.json"
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-        config[self._group_index]["上一轮结束时的位置信息"] = data
-        config_path.write_text(
-            json.dumps(config, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
 
     # ------------------------------------------------------------------
     #  回合循环

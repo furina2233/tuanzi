@@ -43,22 +43,22 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.num_games <= 0:
+    if args.n <= 0:
         print("错误：模拟局数必须为正整数", file=sys.stderr)
         sys.exit(1)
 
     group_index = args.group - 1  # 用户输入从 1 开始，内部从 0 开始
     first_game = args.round == 1
 
-    print(f"\n  「小团快跑」模拟开始 — 共 {args.num_games:,} 局，分组 {args.group}，第 {args.round} 轮\n")
+    print(f"\n  「小团快跑」模拟开始 — 共 {args.n:,} 局，分组 {args.group}，第 {args.round} 轮\n")
 
     wins, top4 = run_simulations(
-        num_games=args.num_games,
+        num_games=args.n,
         first_game=first_game,
         group_index=group_index,
     )
 
-    print_results(wins, top4, total=args.num_games)
+    print_results(wins, top4, total=args.n)
 
 
 if __name__ == "__main__":
