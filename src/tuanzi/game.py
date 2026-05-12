@@ -34,6 +34,12 @@ CHARACTER_NAMES = [
     "爱弥斯团子",
     "守岸人团子",
     "珂莱塔团子",
+    "奥古斯塔团子",
+    "尤诺团子",
+    "弗洛洛团子",
+    "长离团子",
+    "今汐团子",
+    "卡卡罗团子",
 ]
 
 # ---------------------------------------------------------------------------
@@ -101,6 +107,12 @@ class Player:
     # 爱弥斯 — 每场一次瞬移已用
     aimisi_used: bool = False
 
+    # 尤诺 — 每场一次瞬移已用
+    younuo_used: bool = False
+
+    # 奥古斯塔 / 长离 — 下回合强制最后行动
+    force_last: bool = False
+
     def reset(self) -> None:
         self.position = 0
         self.prev_roll = None
@@ -112,6 +124,8 @@ class Player:
         self.return_to_start = False
         self.morning_cycle = 0
         self.aimisi_used = False
+        self.younuo_used = False
+        self.force_last = False
 
 
 class Game:
@@ -343,6 +357,13 @@ class Game:
         order_rolls.sort(key=lambda x: x[1], reverse=True)
         self.turn_order = [p for p, _ in order_rolls]
 
+        # 强制最后行动的团子（奥古斯塔、长离技能）
+        forced = [p for p in self.turn_order if p.force_last]
+        if forced:
+            self.turn_order = [p for p in self.turn_order if not p.force_last] + forced
+            for p in forced:
+                p.force_last = False
+
         roll_log = "  ".join(f"{p.name} {r}" for p, r in order_rolls)
         self._log(f"  行动顺序掷骰: {roll_log}")
         order_str = " → ".join(p.name for p in self.turn_order)
@@ -394,6 +415,14 @@ class Game:
         """处理一个团子的完整回合。"""
         self._log(f"\n【{player.name}】位置 {player.position}")
 
+        # 0. 奥古斯塔 — 处于堆叠最顶端时跳过本回合，下回合最后行动
+        if player.name == "奥古斯塔团子":
+            stack = self.stacks.get(player.position, [])
+            if stack and stack[-1] == player.name:
+                self._log(f"  奥古斯塔技能：处于堆叠顶端，跳过本回合！")
+                player.force_last = True
+                return
+
         # ── 读取预分配的本回合移动点数 ──
         roll = self._pre_rolled_movement[player.name]
         self._log(f"  移动点数: {roll}")
@@ -405,7 +434,24 @@ class Game:
         # 2. 计算基础移动力
         movement = roll
 
-        # 3. 千咲 — 若投出本轮所有移动点数的最小值，额外前进 2 格
+        # 3. 今汐 — 40% 概率移动到头顶团子的最上方
+        if player.name == "今汐团子":
+            stack = self.stacks.get(player.position, [])
+            if player.name in stack:
+                idx = stack.index(player.name)
+                if idx < len(stack) - 1 and random.random() < 0.4:
+                    self._log(f"  今汐技能：移动到堆叠最上方！")
+                    stack.remove(player.name)
+                    stack.append(player.name)
+
+        # 4. 弗洛洛 — 处于堆叠最底层（有上方团子）时移动力 +3
+        if player.name == "弗洛洛团子":
+            stack = self.stacks.get(player.position, [])
+            if len(stack) > 1 and stack[0] == player.name:
+                movement += 3
+                self._log(f"  弗洛洛技能：处于堆叠底层！移动力 +3 → {movement}")
+
+        # 5. 千咲 — 若投出本轮所有移动点数的最小值，额外前进 2 格
         move_values = [v for k, v in self._pre_rolled_movement.items() if k != "布大王"]
         min_move = min(move_values) if move_values else 1
         if player.name == "千咲团子" and roll == min_move:
@@ -449,7 +495,12 @@ class Game:
             movement += 1
             self._log(f"  绯雪技能：布大王奇遇增益！移动力 +1 → {movement}")
 
-        # 10. 卡提希娅 — 绝境逆袭 60% 概率 +2
+        # 11. 卡卡罗 — 开始移动时如果在最后一名，额外前进 3 格
+        if player.name == "卡卡罗团子" and self._get_rank(player) == len(self.players) - 1:
+            movement += 3
+            self._log(f"  卡卡罗技能：最后一名出发！移动力 +3 → {movement}")
+
+        # 12. 卡提希娅 — 绝境逆袭 60% 概率 +2
         if player.name == "卡提希娅团子" and player.desperate_active:
             if random.random() < 0.6:
                 movement += 2
@@ -525,12 +576,39 @@ class Game:
 
         self._log(f"  最终位置: {player.position}")
 
-        # 15. 检查是否与布大王相遇（绯雪条件）
+        # 15. 尤诺 — 经过中点后传送前后排名团子到自身格（每场一次，至多 2 个）
+        if (player.name == "尤诺团子" and not player.younuo_used
+                and player.position > TOTAL_STEPS // 2):
+            ranking = self.get_ranking()
+            idx = ranking.index(player)
+            targets = []
+            if idx > 0:
+                targets.append(ranking[idx - 1])
+            if idx < len(ranking) - 1:
+                targets.append(ranking[idx + 1])
+            if targets:
+                names = "、".join(p.name for p in targets)
+                self._log(f"  尤诺技能：传送 {names} 到自身位置（{player.position}）！")
+                for t in targets:
+                    old_t_pos = t.position
+                    t.position = player.position
+                    self._update_stacking(t.name, old_t_pos, player.position)
+                player.younuo_used = True
+
+        # 16. 检查是否与布大王相遇（绯雪条件）
         if self.bu_dawang_active and player.position == self.bu_dawang_position:
             player.met_bu_dawang = True
             self._log(f"  ★ 与布大王相遇于位置 {player.position}！")
 
-        # 16. 卡提希娅 — 移动结束时检查是否最后一名
+        # 17. 长离 — 若下方堆叠其他团子，下回合 65% 概率最后行动
+        if player.name == "长离团子":
+            stack = self.stacks.get(player.position, [])
+            if player.name in stack and stack.index(player.name) > 0:
+                if random.random() < 0.65:
+                    player.force_last = True
+                    self._log(f"  长离技能：下回合最后行动！")
+
+        # 18. 卡提希娅 — 移动结束时检查是否最后一名
         self._check_desperate(player)
 
     # ------------------------------------------------------------------
